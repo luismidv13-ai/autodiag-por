@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AutoDiag Pro</title>
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --bg-card: #1e293b;
+            --primary: #3b82f6;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        body { background-color: var(--bg-dark); color: var(--text-main); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+        header { background: var(--bg-card); padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); z-index: 10; }
+        .logo { font-size: 20px; font-weight: 800; letter-spacing: 1px; color: var(--primary); }
+        .status-badge { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; background: rgba(0,0,0,0.2); padding: 6px 12px; border-radius: 20px; cursor: pointer; border: 1px solid rgba(255,255,255,0.1); }
+        .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 8px var(--danger); transition: 0.3s; }
+        .dot.connected { background: var(--success); box-shadow: 0 0 8px var(--success); }
+
+        main { flex: 1; overflow-y: auto; padding: 15px; padding-bottom: 90px; }
+        .tab-content { display: none; animation: fadeIn 0.3s ease; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 15px; }
+        .card { background: var(--bg-card); padding: 15px 10px; border-radius: 14px; text-align: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.03); }
+        .card-title { font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-bottom: 5px; letter-spacing: 0.5px; }
+        .card-value { font-size: 24px; font-weight: 800; color: var(--text-main); display: flex; justify-content: center; align-items: baseline; gap: 4px; }
+        .card-unit { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+
+        .btn { width: 100%; padding: 16px; border: none; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; color: white; display: flex; justify-content: center; align-items: center; gap: 8px; margin-bottom: 12px; }
+        .btn:active { transform: scale(0.98); }
+        .btn-primary { background: var(--primary); box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3); }
+        .btn-danger { background: var(--danger); box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+
+        .dtc-list { margin-top: 10px; }
+        .dtc-item { background: rgba(239, 68, 68, 0.1); border-left: 4px solid var(--danger); padding: 15px; margin-bottom: 10px; border-radius: 0 8px 8px 0; display: flex; flex-direction: column; }
+        .dtc-code { font-size: 20px; font-weight: bold; color: var(--danger); }
+        .db-status { font-size: 12px; margin-top: 6px; font-weight: 600; }
+
+        .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg-card); display: flex; padding: 12px 10px 20px 10px; border-top: 1px solid rgba(255,255,255,0.05); z-index: 10; }
+        .nav-item { color: var(--text-muted); flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; cursor: pointer; transition: 0.3s; }
+        .nav-item.active { color: var(--primary); }
+        .nav-icon { font-size: 22px; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo">AutoDiag Pro</div>
+        <div class="status-badge" id="btnConnect" onclick="toggleConnection()">
+            <div class="dot" id="statusDot"></div>
+            <span id="statusText">Conectar</span>
+        </div>
+    </header>
+
+    <main>
+        <div id="tab-dash" class="tab-content active">
+            <button class="btn btn-primary" id="btnLive" onclick="toggleLiveData()" disabled>
+                ▶ Iniciar Datos en Vivo
+            </button>
+            <div class="grid">
+                <div class="card"><div class="card-title">RPM Motor</div><div class="card-value"><span id="val-rpm">--</span><span class="card-unit">rpm</span></div></div>
+                <div class="card"><div class="card-title">Velocidad</div><div class="card-value"><span id="val-spd">--</span><span class="card-unit">km/h</span></div></div>
+                <div class="card"><div class="card-title">Temp. Motor</div><div class="card-value"><span id="val-tmp">--</span><span class="card-unit">°C</span></div></div>
+                <div class="card"><div class="card-title">Carga Motor</div><div class="card-value"><span id="val-lod">--</span><span class="card-unit">%</span></div></div>
+                <div class="card"><div class="card-title">Batería</div><div class="card-value"><span id="val-bat">--</span><span class="card-unit">V</span></div></div>
+                <div class="card"><div class="card-title">Acelerador</div><div class="card-value"><span id="val-thr">--</span><span class="card-unit">%</span></div></div>
+                <div class="card"><div class="card-title">Temp. Admisión</div><div class="card-value"><span id="val-iat">--</span><span class="card-unit">°C</span></div></div>
+                <div class="card"><div class="card-title">Caudalímetro</div><div class="card-value"><span id="val-maf">--</span><span class="card-unit">g/s</span></div></div>
+            </div>
+        </div>
+
+        <div id="tab-diag" class="tab-content">
+            <button class="btn btn-primary" id="btnScan" onclick="scanDTC()" disabled>🔍 Leer Códigos de Fallo</button>
+            <button class="btn btn-danger" id="btnClear" onclick="clearDTC()" disabled>🗑️ Borrar Fallos (Check Engine)</button>
+            
+            <div id="dtc-container" class="dtc-list">
+                <p style="text-align: center; color: var(--text-muted); margin-top: 30px;">Pulsa en Leer para buscar fallos en la ECU.</p>
+            </div>
+        </div>
+    </main>
+
+    <div class="bottom-nav">
+        <div class="nav-item active" onclick="switchTab('dash', this)"><div class="nav-icon">📊</div>Panel</div>
+        <div class="nav-item" onclick="switchTab('diag', this)"><div class="nav-icon">🛠️</div>Fallos</div>
+    </div>
+
+    <script>
+        const URL_BACKEND_PHP = 'https://deskbound-repulsive-penniless.ngrok-free.dev/obd2/guardar_fallo.php';
+
+        let device, server;
+        let writeCharacteristic = null;
+        let notifyCharacteristic = null;
+        let isConnected = false;
+        
+        let commandQueue = [];
+        let isProcessingQueue = false;
+        let currentCommand = null;
+        let receiveBuffer = '';
+        let commandTimeout = null;
+        
+        let liveDataInterval;
+        let isLive = false;
+
+        // PIDs añadidos: Temp de Admisión (010F) y Caudalímetro MAF (0110) para aprovechar las tarjetas del panel
+        const LIVE_PIDS = ['010C', '010D', '0105', '0104', 'ATRV', '0149', '010F', '0110'];
+
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const btns = [document.getElementById('btnLive'), document.getElementById('btnScan'), document.getElementById('btnClear')];
+
+        function switchTab(tabId, element) {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
+            document.getElementById('tab-' + tabId).classList.add('active');
+            element.classList.add('active');
+        }
+
+        async function toggleConnection() {
+            if (isConnected) disconnect();
+            else await connect();
+        }
+
+        async function connect() {
+            try {
+                statusText.innerText = "Buscando...";
+                device = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true,
+                    optionalServices: [0xFFE0, 0xFFF0, 0x1800, 0x1801, "0000ffe0-0000-1000-8000-00805f9b34fb", "0000fff0-0000-1000-8000-00805f9b34fb", "6e400001-b5a3-f393-e0a9-e50e24dcca9e"]
+                });
+
+                device.addEventListener('gattserverdisconnected', disconnect);
+                server = await device.gatt.connect();
+                const services = await server.getPrimaryServices();
+                
+                for (const s of services) {
+                    try {
+                        const characteristics = await s.getCharacteristics();
+                        for (const c of characteristics) {
+                            if (c.properties.notify || c.properties.indicate) notifyCharacteristic = c;
+                            if (c.properties.write || c.properties.writeWithoutResponse) writeCharacteristic = c;
+                        }
+                        if (notifyCharacteristic && writeCharacteristic) break;
+                    } catch (e) { console.warn("Servicio saltado"); }
+                }
+
+                if (!notifyCharacteristic || !writeCharacteristic) throw new Error("UART no compatible.");
+                
+                await notifyCharacteristic.startNotifications();
+                notifyCharacteristic.addEventListener('characteristicvaluechanged', handleReceive);
+                
+                isConnected = true;
+                statusDot.classList.add('connected');
+                statusText.innerText = "Conectado";
+                btns.forEach(b => b.disabled = false);
+
+                queueCommand('ATZ');
+                queueCommand('ATE0');
+                queueCommand('ATL0');
+                queueCommand('ATSP6'); 
+                queueCommand('0100'); 
+
+            } catch (error) {
+                alert("Error: " + error.message);
+                statusText.innerText = "Conectar";
+            }
+        }
+
+        function disconnect() {
+            if (device && device.gatt.connected) device.gatt.disconnect();
+            isConnected = false;
+            isLive = false;
+            clearTimeout(liveDataInterval);
+            clearTimeout(commandTimeout);
+            commandQueue = [];
+            isProcessingQueue = false;
+            statusDot.classList.remove('connected');
+            statusText.innerText = "Conectar";
+            btns.forEach(b => b.disabled = true);
+            document.getElementById('btnLive').innerHTML = "▶ Iniciar Datos en Vivo";
+        }
+
+        function queueCommand(cmd) {
+            commandQueue.push(cmd);
+            if (!isProcessingQueue) processQueue();
+        }
+
+        async function processQueue() {
+            if (commandQueue.length === 0) { 
+                isProcessingQueue = false; 
+                return; 
+            }
+            
+            isProcessingQueue = true;
+            currentCommand = commandQueue.shift();
+            receiveBuffer = '';
+            
+            try {
+                await writeCharacteristic.writeValue(new TextEncoder().encode(currentCommand + '\r'));
+                
+                // Timeout de rescate: Si el ELM327 no responde el '>' en 1.5s, libera la cola para no bloquear la app
+                clearTimeout(commandTimeout);
+                commandTimeout = setTimeout(() => {
+                    console.warn("Timeout esperando respuesta para:", currentCommand);
+                    processQueue();
+                }, 1500);
+            } catch (e) { 
+                processQueue(); 
+            }
+        }
+
+        function handleReceive(event) {
+            const chunk = new TextDecoder().decode(event.target.value);
+            receiveBuffer += chunk;
+            
+            // Cuando llega el prompt del ELM327, significa que terminó de enviar
+            if (receiveBuffer.includes('>')) {
+                clearTimeout(commandTimeout); // Cancelar el timeout de rescate
+                
+                // Limpiar saltos de línea para facilitar el parseo
+                let response = receiveBuffer.replace(/>/g, '').replace(/\r?\n|\r/g, ' ').trim();
+                
+                parseData(currentCommand, response);
+                processQueue(); // Lanzar inmediatamente el siguiente comando
+            }
+        }
+
+        function parseData(cmd, res) {
+            if (!res || res.includes('NO DATA') || res.includes('ERROR')) return;
+            
+            // Validación estricta por prefijo para evitar la mezcla de datos
+            const hex = res.replace(/\s/g, '');
+            
+            // Datos del Panel (Modo 01 y Batería)
+            if (cmd === 'ATRV' && res.includes('V')) {
+                document.getElementById('val-bat').innerText = res.replace('V', '').trim();
+            }
+            else if (hex.startsWith('410C')) document.getElementById('val-rpm').innerText = Math.round(((parseInt(hex.substring(4, 6), 16) * 256) + parseInt(hex.substring(6, 8), 16)) / 4);
+            else if (hex.startsWith('410D')) document.getElementById('val-spd').innerText = parseInt(hex.substring(4, 6), 16);
+            else if (hex.startsWith('4105')) document.getElementById('val-tmp').innerText = parseInt(hex.substring(4, 6), 16) - 40;
+            else if (hex.startsWith('4104')) document.getElementById('val-lod').innerText = (parseInt(hex.substring(4, 6), 16) / 2.55).toFixed(0);
+            else if (hex.startsWith('4149')) document.getElementById('val-thr').innerText = (parseInt(hex.substring(4, 6), 16) / 2.55).toFixed(0);
+            else if (hex.startsWith('410F')) document.getElementById('val-iat').innerText = parseInt(hex.substring(4, 6), 16) - 40;
+            else if (hex.startsWith('4110')) document.getElementById('val-maf').innerText = ((parseInt(hex.substring(4, 6), 16) * 256 + parseInt(hex.substring(6, 8), 16)) / 100).toFixed(1);
+            
+            // Datos de Diagnosis (Modo 03 y Modo 04)
+            else if (cmd === '03' || hex.startsWith('43')) {
+                procesarDTCs(hex);
+            }
+            else if (cmd === '04' || hex.startsWith('44')) {
+                document.getElementById('dtc-container').innerHTML = '<p style="text-align: center; color: var(--success); margin-top: 30px;">Memoria de averías borrada.</p>';
+            }
+        }
+
+        /* ----- SISTEMA DE LECTURA Y GUARDADO DE DTCs ----- */
+
+        function procesarDTCs(hexStr) {
+            const container = document.getElementById('dtc-container');
+            container.innerHTML = '';
+            
+            if (hexStr === '4300' || hexStr.length <= 4) {
+                container.innerHTML = '<p style="text-align: center; color: var(--success); margin-top: 30px;">No se encontraron códigos de fallo en la ECU.</p>';
+                return;
+            }
+
+            // Quitar el prefijo 43 y procesar en pares de 2 bytes (4 caracteres hex)
+            let dtcData = hexStr.startsWith('43') ? hexStr.substring(2) : hexStr;
+            let encontrados = 0;
+
+            for (let i = 0; i < dtcData.length; i += 4) {
+                let bloqueHex = dtcData.substring(i, i + 4);
+                if (bloqueHex === '0000' || bloqueHex.length < 4) continue;
+                
+                let codigoDTC = decodificarDTC(bloqueHex);
+                encontrados++;
+                
+                // Mostrar en la interfaz
+                container.innerHTML += `
+                    <div class="dtc-item">
+                        <div class="dtc-code">${codigoDTC}</div>
+                        <div class="db-status" id="status-${codigoDTC}" style="color: var(--text-muted);">Sincronizando con base de datos...</div>
+                    </div>`;
+                
+                // Enviar petición POST al archivo PHP
+                guardarEnBaseDeDatos(codigoDTC);
+            }
+
+            if (encontrados === 0) {
+                container.innerHTML = '<p style="text-align: center; color: var(--success); margin-top: 30px;">No se encontraron códigos de fallo en la ECU.</p>';
+            }
+        }
+
+        function decodificarDTC(hex4) {
+            // Algoritmo estándar OBD2 para convertir 2 bytes Hex a un código (ej. 0133 -> P0133)
+            const byteAlto = parseInt(hex4.substring(0, 2), 16);
+            const letra = ['P', 'C', 'B', 'U'][(byteAlto >> 6) & 0x03];
+            const digito1 = ((byteAlto >> 4) & 0x03).toString();
+            const digito2 = (byteAlto & 0x0F).toString(16);
+            const byteBajo = hex4.substring(2, 4);
+            return (letra + digito1 + digito2 + byteBajo).toUpperCase();
+        }
+
+        async function guardarEnBaseDeDatos(codigo) {
+            try {
+                const response = await fetch(URL_BACKEND_PHP, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        codigo: codigo, 
+                        descripcion: "Fallo detectado por AutoDiag Pro" 
+                    })
+                });
+                
+                const data = await response.json();
+                const statusDiv = document.getElementById(`status-${codigo}`);
+                
+                if(statusDiv) {
+                    if(data.status === 'ok') {
+                        statusDiv.innerText = "✓ Registro guardado en BD";
+                        statusDiv.style.color = "var(--success)";
+                    } else {
+                        statusDiv.innerText = "⚠ Error MySQL: " + data.message;
+                        statusDiv.style.color = "var(--warning)";
+                    }
+                }
+            } catch (err) {
+                const statusDiv = document.getElementById(`status-${codigo}`);
+                if(statusDiv) {
+                    statusDiv.innerText = "⚠ Sin conexión con el servidor PHP";
+                    statusDiv.style.color = "var(--danger)";
+                }
+            }
+        }
+
+        /* ----- CONTROLES DE INTERFAZ ----- */
+
+        function toggleLiveData() {
+            isLive = !isLive;
+            const btn = document.getElementById('btnLive');
+            btn.innerHTML = isLive ? "⏸ Pausar Datos" : "▶ Iniciar Datos en Vivo";
+            if (isLive) pollLiveData();
+        }
+
+        function pollLiveData() {
+            if (!isLive || !isConnected) return;
+            LIVE_PIDS.forEach(pid => queueCommand(pid));
+            liveDataInterval = setTimeout(pollLiveData, 1500);
+        }
+
+        function scanDTC() { 
+            // Pausar los datos en vivo para que el bus CAN no se colapse al leer la memoria
+            if (isLive) toggleLiveData(); 
+            document.getElementById('dtc-container').innerHTML = '<p style="text-align: center; color: var(--primary); margin-top: 30px;">Leyendo memoria de la ECU...</p>';
+            queueCommand('03'); 
+        }
+        
+        function clearDTC() { 
+            if (isLive) toggleLiveData();
+            if (confirm("¿Estás seguro de que deseas borrar la memoria de averías? El motor debe estar apagado con el contacto puesto.")) {
+                queueCommand('04'); 
+            }
+        }
+    </script>
+</body>
+</html>
